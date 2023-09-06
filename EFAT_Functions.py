@@ -20,8 +20,8 @@ from sklearn.metrics import mean_squared_error
 from sklearn.metrics import mean_absolute_error
 from sklearn.model_selection import cross_val_score
 from sklearn.preprocessing import StandardScaler
-
-
+import statistics
+import time
 
 
 
@@ -252,6 +252,265 @@ def aemet_data_api(year): # -> in order to get weather records from AEMET API
     return aemet_consolidated
 
 
+def download_embalses():
+
+    #In order to download and to update pur 'Embalses' info file which will contain the basic data for hidro estimations
+
+    #The file is stored in 'Ministerio para la Transición Ecológica y reto demográfico' webpage, and it is stored in zip format
+
+    embalses = requests.get('https://www.miteco.gob.es/es/agua/temas/evaluacion-de-los-recursos-hidricos/bd-embalses_tcm30-538779.zip')
+    with zipfile.ZipFile(io.BytesIO(embalses.content), 'r') as zip_embalses:
+        zip_embalses.extractall('./Data/Hidro/')
+
+    #When extracting it we get a mdb file. To transform it to a csv file:
+
+    # MDB file path
+    mdb_file = './Data/Hidro/BD-Embalses.mdb'
+
+    # table name. It has to be adjusted within the years
+    table_name = "T_Datos Embalses 1988-2023"
+
+    # output CSV file path
+    output_csv_file = './Data/Hidro/Embalses.csv'
+
+    command = f"mdb-export {mdb_file} \"{table_name}\""
+    output = subprocess.run(shlex.split(command), capture_output=True, text=True).stdout
+
+    # Write the output to the CSV file
+    with open(output_csv_file, 'w') as f:
+        f.write(output)
+
+    #Convert the csv file into a dataframe
+
+    embalses_data = pd.read_csv('./Data/Hidro/Embalses.csv')
+
+    return embalses_data
+
+def aemet_municipios(): # -> in order to get masterdata from AEMET API
+
+    #AEMET API does not allow to extract predictions for all Municipios all the same time, therefore we firstly have to download the masterdata:
+
+    url = f"https://opendata.aemet.es/opendata/api/maestro/municipios"
+
+    #We need an API key that can be obtained from AEMET easily
+    
+    query = {"api_key":"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJqYXZpZXIuZXNjYWxvbmlsbGFAaG90bWFpbC5jb20iLCJqdGkiOiJlNzgyMjg0Yy05YjI0LTQ5ZDktOWMwMS1kYjRlZjQwNjkxNDIiLCJpc3MiOiJBRU1FVCIsImlhdCI6MTY4MTE0MTIyNCwidXNlcklkIjoiZTc4MjI4NGMtOWIyNC00OWQ5LTljMDEtZGI0ZWY0MDY5MTQyIiwicm9sZSI6IiJ9.3flzKWh31FkeRBFex1xc4nIwEaQE1QPXoCpeicIluQU"}
+
+    #We create an empty dataframe with the columns that will be appended
+
+    aemet_municipios_total = pd.DataFrame(columns = ['latitud', 'id_old', 'url', 'latitud_dec', 'altitud', 'capital',
+        'num_hab', 'zona_comarcal', 'destacada', 'nombre', 'longitud_dec', 'id',
+        'longitud'])
+    
+    response = requests.request("GET", url,  params = query)
+
+    aemet_municipios = response.json()
+
+    #The response is a list of dicts, in which each dict is one municipio:
+
+    for item in aemet_municipios:
+
+        municipio = pd.DataFrame(item, index= [0])
+        aemet_municipios_total = pd.concat([aemet_municipios_total, municipio])
+    aemet_municipios_total.set_index('id', inplace = True)
+
+    aemet_municipios_total.to_csv('Data/Weather/Municipios_md.csv')
+
+def aemet_municipios_predictions(): # -> in order to get predictions for next seven days from AEMET API
+
+    #We are going to extract the predictions of all municipios in Spain
+
+    municipios = pd.read_csv('Data/Weather/Municipios_md.csv')
+
+    #As we are not going to be able to access to all data due to time cand resources consumption, we ordered by num.inhabitants to get to as many provinces as possible
+
+    municipios = municipios.sort_values('num_hab', ascending = False)
+
+    municipios_id = list(municipios['id'])
+
+    #We create a dataframe that will be appended
+
+    df_prediction = pd.DataFrame(columns= ['id_municipio', 'nombre', 'provincia', 'fecha', 'tmax', 'tmin', 'estado_cielo', 'viento', 'racha'])
+
+    #Now we create a loop in order to access to all the required information for each municipio:
+    e = 0
+
+    nprovincias = []
+
+
+
+    for municipio in municipios_id:
+        e+=1
+        
+        if e > 130:
+            break
+        else:
+            #In order to avoid blocking AEMET servers:
+
+            time.sleep(0.3)
+
+            #We only need municipio ID:
+
+            municipio = municipio[2:]
+
+            url = f"https://opendata.aemet.es/opendata/api/prediccion/especifica/municipio/diaria/{municipio}"
+
+            #We need an API key that can be obtained from AEMET easily
+
+            query = {"api_key":"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJqYXZpZXIuZXNjYWxvbmlsbGFAaG90bWFpbC5jb20iLCJqdGkiOiJlNzgyMjg0Yy05YjI0LTQ5ZDktOWMwMS1kYjRlZjQwNjkxNDIiLCJpc3MiOiJBRU1FVCIsImlhdCI6MTY4MTE0MTIyNCwidXNlcklkIjoiZTc4MjI4NGMtOWIyNC00OWQ5LTljMDEtZGI0ZWY0MDY5MTQyIiwicm9sZSI6IiJ9.3flzKWh31FkeRBFex1xc4nIwEaQE1QPXoCpeicIluQU"}
+
+            response = requests.request("GET", url,  params = query, timeout = 500)
+
+            
+            if response.status_code != 200:
+
+                #We have another API key if the main one fails. We repeat the same procedure:
+
+                time.sleep(0.5)
+
+                query = {"api_key": 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJsYWZ1bGFmdWVudGVAZ21haWwuY29tIiwianRpIjoiNGZlY2Y3MzMtYTY3Yy00M2ZmLTgxODMtZTM1N2Q0ODc0YzM5IiwiaXNzIjoiQUVNRVQiLCJpYXQiOjE2ODg1MTM0MjksInVzZXJJZCI6IjRmZWNmNzMzLWE2N2MtNDNmZi04MTgzLWUzNTdkNDg3NGMzOSIsInJvbGUiOiIifQ.WCoq7p6RyV6thyXkkzUmgg27jt2AsJBK3uVTrv2uBcI'}
+
+                response = requests.request("GET", url,  params = query, timeout = 500)
+
+                predictions = response.json()['datos']
+
+                nprovincias.append(municipio[:2])
+                
+
+                predictions = urllib.request.urlopen(predictions)
+                predictions = json.loads(predictions.read().decode('latin-1'))
+
+                #As usual, json file provides the information in many dictionaries, lists etc. and it is not easy to process it:
+            
+                for item in predictions:
+                    item_id = item['id']
+                    nombre = item['nombre']
+                    provincia = item['provincia']
+                    prediccion = item['prediccion']
+                    prediccion = prediccion['dia']
+                    for day in prediccion:
+                        fecha = day['fecha']
+
+                        #For get the temperature(max & min):
+
+                        temp = day['temperatura']
+                        tmax = temp['maxima']
+                        tmin = temp['minima']
+
+                        #In order to access to isolation information. We will map the information afterwards
+
+                        estado_del_cielo = []
+                        for data in day['estadoCielo']:
+
+                            if data['value'] == '':
+                                pass
+                            else:
+                                estado_id = data['value']
+                                estado_del_cielo.append(estado_id)
+
+                        #Wind information
+
+                        velocidad_viento = []
+                        for data in day['viento']:
+                            
+                            velocidad = float(data['velocidad'])
+                            velocidad_viento.append(velocidad)
+
+                        racha_viento = []
+                        for data in day['rachaMax']:
+
+                            if data['value'] == '':
+                                pass
+                            else:
+                                rachamax = float(data['value'])
+                                racha_viento.append(rachamax)
+                        
+                        #Now the dataframe is created:
+
+                        estado_cielo = statistics.mode(estado_del_cielo)
+                        viento = statistics.mean(velocidad_viento)
+                        if len(racha_viento) == 0: #In order to avoid making the mean with '0' values that are errors:
+                            racha = None
+                        else:
+                            racha = statistics.mean(racha_viento)
+                        datadict = {'id_municipio': item_id, 'nombre': nombre, 'provincia':provincia, 'fecha': fecha, 'tmax': tmax, 'tmin':tmin, 'estado_cielo' : estado_cielo, 'viento': viento, 'racha' :racha}
+                        total_prediction = pd.DataFrame(datadict, index = [0])
+                        df_prediction = pd.concat([df_prediction, total_prediction])
+                
+                
+                    
+
+            else:
+                predictions = response.json()['datos']
+
+                nprovincias.append(municipio[:2])
+                
+
+                predictions = urllib.request.urlopen(predictions)
+                predictions = json.loads(predictions.read().decode('latin-1'))
+
+                #As usual, json file provides the information in many dictionaries, lists etc. and it is not easy to process it:
+            
+                for item in predictions:
+                    item_id = item['id']
+                    nombre = item['nombre']
+                    provincia = item['provincia']
+                    prediccion = item['prediccion']
+                    prediccion = prediccion['dia']
+                    for day in prediccion:
+                        fecha = day['fecha']
+
+                        #For get the temperature(max & min):
+
+                        temp = day['temperatura']
+                        tmax = temp['maxima']
+                        tmin = temp['minima']
+
+                        #In order to access to isolation information. We will map the information afterwards
+
+                        estado_del_cielo = []
+                        for data in day['estadoCielo']:
+
+                            if data['value'] == '':
+                                pass
+                            else:
+                                estado_id = data['value']
+                                estado_del_cielo.append(estado_id)
+
+                        #Wind information
+
+                        velocidad_viento = []
+                        for data in day['viento']:
+                            
+                            velocidad = float(data['velocidad'])
+                            velocidad_viento.append(velocidad)
+
+                        racha_viento = []
+                        for data in day['rachaMax']:
+
+                            if data['value'] == '':
+                                pass
+                            else:
+                                rachamax = float(data['value'])
+                                racha_viento.append(rachamax)
+                        
+                        #Now the dataframe is created:
+
+                        estado_cielo = statistics.mode(estado_del_cielo)
+                        viento = statistics.mean(velocidad_viento)
+                        if len(racha_viento) == 0: #In order to avoid making the mean with '0' values
+                            racha = None
+                        else:
+                            racha = statistics.mean(racha_viento)
+                        datadict = {'id_municipio': item_id, 'nombre': nombre, 'provincia':provincia, 'fecha': fecha, 'tmax': tmax, 'tmin':tmin, 'estado_cielo' : estado_cielo, 'viento': viento, 'racha' :racha}
+                        total_prediction = pd.DataFrame(datadict, index = [0])
+                        df_prediction = pd.concat([df_prediction, total_prediction])
+       
+                               
+        
+
+    print(f'{len(set(nprovincias))}, {e}')
+    return df_prediction
 
 def weather_csv_file(year): # -> So we can save all years data in our project's directory
     weather = aemet_data_api(year)
@@ -324,6 +583,23 @@ def embalses_elect_year (year):
     embalses_capacity = embalses_elect.merge(presas, on = 'EMBALSE_NOMBRE', how= 'inner')
     
     return embalses_capacity
+
+def codificar_sol(x):
+
+    #In order to align both files: the used for training and the new data with the same category
+
+    if x <= 2:
+        return 0
+    if 2 < x <= 4:
+        return 1
+    if 4 < x <= 6:
+        return 2
+    if 6 < x <= 8:
+        return 3
+    if 8 < x <= 10:
+        return 4
+    if 10 < x:
+        return 5
 
 def lr_model (X,y):
 
