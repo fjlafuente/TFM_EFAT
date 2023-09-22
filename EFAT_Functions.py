@@ -101,32 +101,47 @@ def data_REE_demand(year): # -> REE API Only allows to extract data in a yearly 
         data_consolidated = pd.concat([data_consolidated, data])
     return data_consolidated
 
-def data_REE_potencia_instalada(year): # -> REE API Only allows to extract data in a yearly range as much, in monthly basis
+def data_REE_potencia_instalada(yearini, yearend): # -> REE API Only allows to extract data in a yearly range as much, in monthly basis
 
-    #First we get the response from REE (It only allow us to see one year each time)
 
-    response = requests.get(f"https://apidatos.ree.es/es/datos/generacion/potencia-instalada?start_date={year}-01-01T00:00&end_date={year}-12-31T23:59&time_trunc=day")
-    
-    #Data comes in a json with dictionaries inside. To access to the data we have to proccess it a little bit with json and dictionary methods.
+    #First we get the response from REE (It only allow us to see one year each time). We will create an empty list that will be appended
 
-    pinstalled = response.json()['included']
-    pinstalled = pd.DataFrame.from_dict(pinstalled)['attributes']
-    pinstalled = pd.json_normalize(pinstalled)
-    pinstalled = pinstalled[['title','values']]
-    
-    #We create a for loop in order to access to all data in the dicionary and to get the complete list for all the energetic resources
-    
-    typelist = list(pinstalled['title'])
-    n= 0
-    data_consolidated = pd.DataFrame(columns= ['value', 'percentage', 'datetime', 'Type'])
-    
-    for value in pinstalled['values']:
- 
-        data = pd.DataFrame.from_dict(value)
-        data['Type'] = typelist[n]
-        n += 1
-        data_consolidated = pd.concat([data_consolidated, data])
+    years = range(yearini,yearend + 1)
+    all_data = []
+
+    for year in years:
+
+        #First we get the response from REE (It only allow us to see one year each time)
+
+        response = requests.get(f"https://apidatos.ree.es/es/datos/generacion/potencia-instalada?start_date={year}-01-01T00:00&end_date={year}-12-31T23:59&time_trunc=day&all_ccaa=allCcaa")
         
+        #Data comes in a json with dictionaries inside. To access to the data we have to proccess it a little bit with json and dictionary methods.
+
+        pinstalled = response.json()['included']
+
+        for ccaa in pinstalled:
+
+            cc_aa = ccaa['community_name']
+            
+            #We create a for loop in order to access to all data in the dicionary and to get the complete list for all the energetic resources
+            
+            for item in ccaa['content']:
+
+                techonology = item['type']
+        
+                for element in item['attributes']['values']:
+                    
+                    value = element['value']
+                    month = element['datetime']
+                    all_data.append({
+                        'comunidad_autonoma': cc_aa,
+                        'type': techonology,
+                        'month': month,
+                        'value': value
+                    })
+            time.sleep(3.0)
+    data_consolidated = pd.DataFrame(all_data)
+    
     return data_consolidated
 
 def data_REE_generation_by_ccaa(year): #-> In order to know generation per CCAA per month
