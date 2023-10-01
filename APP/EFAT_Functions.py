@@ -346,19 +346,34 @@ def aemet_municipios(): # -> in order to get masterdata from AEMET API
         'num_hab', 'zona_comarcal', 'destacada', 'nombre', 'longitud_dec', 'id',
         'longitud'])
     
-    response = requests.request("GET", url,  params = query)
+    for retry in range(3):
+        try:
+    
+            response = requests.request("GET", url,  params = query)
 
-    aemet_municipios = response.json()
+            if response.status_code == 200:
 
-    #The response is a list of dicts, in which each dict is one municipio:
+                aemet_municipios = response.json()
 
-    for item in aemet_municipios:
+                #The response is a list of dicts, in which each dict is one municipio:
 
-        municipio = pd.DataFrame(item, index= [0])
-        aemet_municipios_total = pd.concat([aemet_municipios_total, municipio])
-    aemet_municipios_total.reset_index()
+                for item in aemet_municipios:
 
-    return aemet_municipios_total
+                    municipio = pd.DataFrame(item, index= [0])
+                    aemet_municipios_total = pd.concat([aemet_municipios_total, municipio])
+                aemet_municipios_total.reset_index()
+
+                return aemet_municipios_total
+        
+            else:
+                print("Server error. Trying again...")
+                time.sleep(5.0)  # Wait for another retry
+        except Exception as e:
+            print(f"Error {e}. Trying again...")
+            time.sleep(5.0)  # Wait for another retry
+            
+    print("Unable to download and read the file. Please try again later.")
+    return None
 
 
 def aemet_municipios_predictions(municipios): # -> in order to get predictions for next seven days from AEMET API
@@ -542,6 +557,9 @@ def weather_csv_file(year): # -> So we can save all years data in our project's 
     weather = aemet_data_api(year)
     weather.to_csv(f"~/data/TFM_EFAT/TFM_EFAT/Data/Weather/Weather{year}.csv", index = False)
 
+
+
+
 ## PROCESSING
 
 def weather_processing(weather_file):
@@ -576,39 +594,6 @@ def constrain_weather (weather_file):
 
     return weather_pivot_table
 
-def embalses_elect_year (year):
-
-    #Firstly, we read the 'embalses' data and select only the year we want and to process 'Embalse Nombre' in order to match it with 'presas' file.
-    #We only want the dams with the electricty flag marked
-    
-    embalses_elect = pd.read_excel('./Data/Hidro/T_Embalses_2014_2023.xlsx')
-    embalses_elect = embalses_elect.loc[embalses_elect['ELECTRICO_FLAG'] == 1]
-    embalses_elect['year'] = pd.DatetimeIndex(embalses_elect['FECHA']).year
-
-    #In order to transform water KPIs into numeric
-    str(embalses_elect['AGUA_TOTAL'])
-    embalses_elect['AGUA_TOTAL'] = embalses_elect['AGUA_TOTAL'].str.replace(',' , '.')
-    embalses_elect['AGUA_TOTAL'] = embalses_elect['AGUA_TOTAL'].apply(pd.to_numeric)
-    str(embalses_elect['AGUA_ACTUAL'])
-    embalses_elect['AGUA_ACTUAL'] = embalses_elect['AGUA_ACTUAL'].str.replace(',' , '.')
-    embalses_elect['AGUA_ACTUAL'] = embalses_elect['AGUA_ACTUAL'].apply(pd.to_numeric)
-
-    #In order to have the information of the year that we want and to get the name of the dam in the way to match it with 'presas' file
-
-    embalses_elect = embalses_elect.query('year == @year')
-    embalses_elect['EMBALSE_NOMBRE'] = embalses_elect['EMBALSE_NOMBRE'].apply(str.upper).apply(unidecode)
-
-    #Now, we have to preprocess 'presas' data
-
-    presas = pd.read_csv('./Data/Hidro/Presas.csv', encoding = 'latin-1', sep = ';')
-    presas.rename({'Presa':'EMBALSE_NOMBRE'}, axis = 1, inplace = True)
-    presas['EMBALSE_NOMBRE'] = presas['EMBALSE_NOMBRE'].apply(unidecode)
-
-    #At last, the joint. It will be some dams not matched but are not relevant for our study:
-
-    embalses_capacity = embalses_elect.merge(presas, on = 'EMBALSE_NOMBRE', how= 'inner')
-    
-    return embalses_capacity
 
 def embalses_select_year (df, presas_file, year):
 
@@ -1166,109 +1151,199 @@ def standarization_minmax_scaler (dataframe):
 #READ DATA
 
 def drive_read_file(url):
-    # Generate the Google Drive download URL
-    download_url = 'https://drive.google.com/uc?id=' + url.split('/')[-2]
-    
-    # Download the file using gdown
-    file_path = gdown.download(download_url, quiet=False)
-    
-    # Read the file directly into a pandas DataFrame
-    df = pd.read_csv(file_path)
-    
-    # Delete the downloaded file
-    os.remove(file_path)
-    
-    return df
+    for retry in range(3):
+        try:
+            # Generate the Google Drive download URL
+            download_url = 'https://drive.google.com/uc?id=' + url.split('/')[-2]
+            
+            # Download the file using gdown
+            file_path = gdown.download(download_url, quiet=False)
+            
+            if file_path is not None:
+                # Read the file directly into a pandas DataFrame
+                df = pd.read_csv(file_path)
+                
+                # Delete the downloaded file
+                os.remove(file_path)
+                
+                return df
+            else:
+                print("Download failed. Trying again...")
+                time.sleep(5.0)  # Wait for another retry
+        except Exception as e:
+            print(f"Error {e}. Trying again...")
+            time.sleep(5.0)  # Wait for another retry
+    print("Unable to download. Please try again later.")
+    return None
 
 def read_gpd_file(url):
     file_id = url.split('/')[-2]
     url_total = 'https://drive.google.com/uc?export=download&id=' + file_id
-    r = requests.get(url_total)
-    # Create a temporary directory to include the zip that contains the map files
-    temp_dir = tempfile.mkdtemp()
-    # Save the zip file to the temporary directory so we can access to the info. Otherwise gpd_read is not going to work.
-    with open(f"{temp_dir}/file.zip", "wb") as f:
-        f.write(r.content)
-    # Extract the zip file
-    with zipfile.ZipFile(f"{temp_dir}/file.zip", 'r') as zip_ref:
-        zip_ref.extractall(temp_dir)
-    # Find the .shp file as it is the one that really matters for reading and creating the map
-    shapefile = [f for f in os.listdir(temp_dir) if f.endswith('.shp')][0]
-    # Read the shapefile
-    map_file = gpd.read_file(f"{temp_dir}/{shapefile}")
-    # Remove the temporary directory
-    shutil.rmtree(temp_dir)
-    return map_file
-
-def drive_read_file_othersep(url): #In order to download the files with the urls provided at the beginning of the notebook:
-
-    #In order to download data and to assign it to a variable:
-    file = 'https://drive.google.com/uc?id=' + url.split('/')[-2]
-    df = pd.read_csv(file, sep = ';')
-    return df
-
-def drive_read_xlsx_file(url): #In order to download the files with the urls provided at the beginning of the notebook and that are uin xslsx format:
-    # Generate the Google Drive download URL
-    download_url = 'https://drive.google.com/uc?id=' + url.split('/')[-2]
     
-    # Download the file using gdown
-    file_path = gdown.download(download_url, quiet=False)
+    for retry in range(3):
+        try:
+            r = requests.get(url_total)
+            r.raise_for_status() 
+            
+            if r.status_code == 200:
+                
+                temp_dir = tempfile.mkdtemp()
+                with open(f"{temp_dir}/file.zip", "wb") as f:
+                    f.write(r.content)
+                with zipfile.ZipFile(f"{temp_dir}/file.zip", 'r') as zip_ref:
+                    zip_ref.extractall(temp_dir)
+                shapefile = [f for f in os.listdir(temp_dir) if f.endswith('.shp')][0]
+                map_file = gpd.read_file(f"{temp_dir}/{shapefile}")
+                shutil.rmtree(temp_dir)
+                return map_file
+            else:
+                print("Server error. Trying again...")
+                time.sleep(5.0)  # Wait for another retry
+        except Exception as e:
+            print(f"Error {e}. Trying again...")
+            time.sleep(5.0)  # Wait for another retry
     
-    # Read the file directly into a pandas DataFrame
-    df = pd.read_excel(file_path)
     
-    # Delete the downloaded file
-    os.remove(file_path)
+    print("Unable to download, server not working. Please try again later.")
+    return None
 
-    return df
+def drive_read_file_othersep(url, sep=';'):
+    for retry in range(3):
+        try:
+            # Generate the Google Drive download URL
+            file_url = 'https://drive.google.com/uc?id=' + url.split('/')[-2]
+            
+            # Download the file and read it into a DataFrame
+            df = pd.read_csv(file_url, sep=sep)
+            
+            return df
+        except Exception as e:
+            print(f"Error {e}. Trying again...")
+            time.sleep(5.0)  # Wait for another retry
+    
+    print("Unable to download and read the file. Please try again later.")
+    return None
+
+def drive_read_xlsx_file(url):
+    for retry in range(3):
+        try:
+            # Generate the Google Drive download URL
+            download_url = 'https://drive.google.com/uc?id=' + url.split('/')[-2]
+            
+            # Download the file using gdown
+            file_path = gdown.download(download_url, quiet=False)
+            
+            if file_path is not None:
+                # Read the file directly into a pandas DataFrame
+                df = pd.read_excel(file_path)
+                
+                # Delete the downloaded file
+                os.remove(file_path)
+                
+                return df
+            else:
+                print("Download failed. Trying again...")
+                time.sleep(5.0)  # Wait for another retry
+        except Exception as e:
+            print(f"Error {e}. Trying again...")
+            time.sleep(5.0)  # Wait for another retry
+    
+    print("Unable to download and read the file. Please try again later.")
+    return None
 
 def drive_read_latin_encoding_file(url): #In order to download the files with the urls provided at the beginning of the notebook and that are uin xslsx format:
 
-    # Generate the Google Drive download URL
-    download_url = 'https://drive.google.com/uc?id=' + url.split('/')[-2]
-    
-    # Download the file using gdown
-    file_path = gdown.download(download_url, quiet=False)
-    
-    # Read the file directly into a pandas DataFrame
-    df = pd.read_csv(file_path, encoding = 'latin-1', sep = ';')
-    
-    # Delete the downloaded file
-    os.remove(file_path)
-    
-    return df
+    for retry in range(3):
+        try:
+
+            # Generate the Google Drive download URL
+            download_url = 'https://drive.google.com/uc?id=' + url.split('/')[-2]
+            
+            # Download the file using gdown
+            file_path = gdown.download(download_url, quiet=False)
+
+            if file_path is not None:
+            
+                # Read the file directly into a pandas DataFrame
+                df = pd.read_csv(file_path, encoding = 'latin-1', sep = ';')
+                
+                # Delete the downloaded file
+                os.remove(file_path)
+                return df
+            else:
+                print("Download failed. Trying again...")
+                time.sleep(5.0)  # Wait for another retry
+
+        except Exception as e:
+            print(f"Error {e}. Trying again...")
+            time.sleep(5.0)  # Wait for another retry
+
+    print("Unable to download and read the file. Please try again later.")
+    return None
 
 
 def drive_read_joblibmodel(url): #In order to download the trained models
 
     # Generate the Google Drive download URL
     download_url = 'https://drive.google.com/uc?id=' + url.split('/')[-2]
+
+    for retry in range(3):
+        try:
+
+            # Download the file using gdown
+            file_path = gdown.download(download_url, quiet=False)
+
+            if file_path is not None:
+            
+                # Read the file directly into a pandas DataFrame
+                model = load(file_path)
+                
+                # Delete the downloaded file
+                os.remove(file_path)
+
+                return model
+            
+            else:
+                print("Download failed. Trying again...")
+                time.sleep(5.0)  # Wait for another retry
+
+        except Exception as e:
+            print(f"Error {e}. Trying again...")
+            time.sleep(5.0)  # Wait for another retry
+
+    print("Unable to download and read the file. Please try again later.")
+    return None
     
-    # Download the file using gdown
-    file_path = gdown.download(download_url, quiet=False)
-    
-    # Read the file directly into a pandas DataFrame
-    model = load(file_path)
-    
-    # Delete the downloaded file
-    os.remove(file_path)
-    
-    return model
+
 
 def drive_read_image(url):
+
     # Generate the Google Drive download URL
     download_url = 'https://drive.google.com/uc?id=' + url.split('/')[-2]
+
+    for retry in range(3):
+
+        try:
+
+            # Download the file using gdown
+            file_path = gdown.download(download_url, quiet=False)
+
+            if file_path is not None:
+            
+                # Read the file directly into a pandas DataFrame
+                image = Image.open(file_path)
+
+                return image
+            else:
+                    print("Download failed. Trying again...")
+                    time.sleep(5.0)  # Wait for another retry
+
+        except Exception as e:
+            print(f"Error {e}. Trying again...")
+            time.sleep(5.0)  # Wait for another retry 
     
-    # Download the file using gdown
-    file_path = gdown.download(download_url, quiet=False)
-    
-    # Read the file directly into a pandas DataFrame
-    image = Image.open(file_path)
-    
-    # Delete the downloaded file
-    os.remove(file_path)
-    
-    return image
+    print("Unable to download and read the file. Please try again later.")
+    return None
 
 
 
