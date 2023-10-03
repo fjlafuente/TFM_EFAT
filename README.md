@@ -24,6 +24,7 @@ A more detailed explanation of the project's goal' and the main steps followed c
 ## Respository structure:
 
 In the repository you will find:
+
     - requirements.txt : Includes all the specifications needed for the projject, to be installed ith pip.
     - doc: Folder in which the project's Memory is saved and also it can be found another file from REE useful to understand better the project.
     - APP: Frontend (Streamlit app) source code folder.
@@ -42,7 +43,7 @@ Data can be found here:
 
 But the specific URLs that are used are mentioned in the notebooks.
 
-## How to star
+## How to start
 
 1. First of all, clone this repository into your local, doing it on the terminal or downloading it as a zipfile.
 
@@ -56,7 +57,7 @@ The easiest and most simple way to start working with EFAT project is creating a
 
 3. Then it is easy to create a new environment by launching AnacondaPrompt (or other terminal):
 
-```conda env create --name EFAT_env python=3.8.11´´´
+```conda env create --name EFAT_env python=3.8.11 ```
 
 4. Then, once the environment is created, it's time to install all the packages needed.
 Firstly, activate Conda environment:
@@ -65,7 +66,7 @@ Firstly, activate Conda environment:
 
 5. Then go to the folder in which the repository has been cloned and install requirements.txt
 
-```pip install -r requirements.txt´´´
+`pip install -r requirements.txt`
 
 Now you have everything you need to start learning with EFAT project!
 A good idea could be to start taking a look at the Exploration notebooks or directly start with 'EFAT_Model_Conclusions' notebook. After that, you could find how the model is implemented with 'EFAT_Predictions'.
