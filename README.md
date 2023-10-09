@@ -34,7 +34,7 @@ In the repository you will find:
     - Processed_Dataframes: Information of each technology already processed and ready to be used on the frontend.
     - EFAT_predictions: notebook in which the weather online is downloaded and processed and the models calculated are applied to get the predictions we are looking for.
 
-## Google Drieve shared folder:
+## Google Drive shared folder:
 
 Almost all the data is stored online on a public Google Drive folder, which males easier and lighter to work withdata without having to download it to local.
 Data can be found here:
@@ -72,7 +72,7 @@ Now you have everything you need to start learning with EFAT project!
 A good idea could be to start taking a look at the Exploration notebooks or directly start with 'EFAT_Model_Conclusions' notebook. After that, you could find how the model is implemented with 'EFAT_Predictions'.
 In case you are just curious about the final ouput of the project you can go directly to the online frontend built on streamlit:
 
-
+https://efat-project.streamlit.app/
 
 Hope you enjoy!
 

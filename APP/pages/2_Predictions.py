@@ -40,45 +40,45 @@ current_year = datetime.datetime.now().year
 
 #Create the functions with st.cache to store the result in every interaction
 
-@st.cache_data
+@st.cache_data(show_spinner= "Downloading municipalities data...")
 def download_municipios ():
     municipios = aemet_municipios()
     municipios = sort_municipios(municipios)
     return municipios
 
-@st.cache_data
+@st.cache_data(show_spinner= "Downloading weather forecast data...")
 def download_weather_predictions(municipios):
     df_predictions = aemet_municipios_predictions(municipios)
     return df_predictions
 
-@st.cache_data
+@st.cache_data(show_spinner= "Downloading dams data...")
 def download_drive_others(url):
     df = drive_read_file_othersep(url)
     return df
 
-@st.cache_data(persist = True)
+
 def download_df_embalses(presas_file, year):
     df = download_embalses()
     #We can assume for now it's always going to be 2023
     df = embalses_select_year(df, presas_file, year)
     return df
 
-@st.cache_data
+@st.cache_data(show_spinner= "Downloading provinces data...")
 def download_df_provincias(url):
     df = drive_read_file_othersep(url)
     return df
 
-@st.cache_data
+@st.cache_data(show_spinner= "Downloading power installed data...")
 def download_power_installed(yearini,yearend):
     df = data_REE_potencia_instalada(yearini, yearend)
     return df
 
-@st.cache_data
+@st.cache_data(show_spinner= "Downloading  data...")
 def download_df_drive_latin(url):
     df = drive_read_latin_encoding_file(url)
     return df
 
-@st.cache_data
+@st.cache_data(show_spinner= "Downloading  data...")
 def download_model(url):
     model = drive_read_joblibmodel(url)
     return model
