@@ -318,7 +318,7 @@ def download_embalses():
     """
     
 
-    for retry in range(3):
+    for retry in range(4):
 
         try:
 
@@ -1553,6 +1553,20 @@ def drive_read_image(url):
 
 #PLOTS
 
+def plot_boxplot(dataframe, column_names):
+    # Select the specified columns from the DataFrame
+    subset_df = dataframe[column_names]
+
+    # Create a boxplot
+    plt.figure(figsize=(10, 6))  
+    sns.boxplot(data = subset_df)
+
+    plt.title('Energy Production Boxplot')  
+    plt.xlabel('Energy Sources')  
+    plt.ylabel('Energy Production') 
+
+    plt.show()
+
 def plot_map_generation(map_file, dataframe, year, plotlimits):
 
     dataframe = dataframe[dataframe['fecha'].dt.year == year]
@@ -1624,9 +1638,6 @@ def plot_map_demand(map_file, dataframe, year, plotlimits):
     # Adjust the map limits
     ax.set_xlim(-16, 5) 
     ax.set_ylim(33, 45)
-
-    #Adjust the y limits:
-    ax.set_ylim(plotlimits)
 
     plt.title(f'Demand of by CCAA in GWh, {year}')
     plt.xlabel('Longitude')

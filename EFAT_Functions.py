@@ -1598,9 +1598,6 @@ def plot_map_generation(map_file, dataframe, year, plotlimits):
     ax.set_xlim(-16, 5) 
     ax.set_ylim(33, 45)
 
-    #Adjust the y limits:
-    ax.set_ylim(plotlimits)
-
     plt.title(f'Generation of by CCAA in GWh, {year}')
     plt.xlabel('Longitude')
     plt.ylabel('Latitude')
@@ -1638,9 +1635,6 @@ def plot_map_demand(map_file, dataframe, year, plotlimits):
     # Adjust the map limits
     ax.set_xlim(-16, 5) 
     ax.set_ylim(33, 45)
-
-    #Adjust the y limits:
-    ax.set_ylim(plotlimits)
 
     plt.title(f'Demand of by CCAA in GWh, {year}')
     plt.xlabel('Longitude')

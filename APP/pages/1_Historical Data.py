@@ -13,7 +13,7 @@ st.markdown("""
     ### Historical Data
 
     The EFAT project is all about predicting energy generation and demand using weather forecasts. Before diving into the heavy stuff, we've got to see how our model's variables stack up and how they connect.
-    Here, you can play around with charts that show electricity trends over the year and differences between the Comunidades Autónomas. It's a neat way to see which regions are leaning into certain energy technologies.
+    Here, you can play around with charts that show electricity trends over the year and differences between the Comunidades Autónomas. It's a simple way to see which regions are leaning into certain energy technologies.
     """)
 
 url_df_total_processed = 'https://drive.google.com/file/d/1Ctk3DVWuoxd_ELWqlm0AamL5Was48E4B/view?usp=drive_link'
