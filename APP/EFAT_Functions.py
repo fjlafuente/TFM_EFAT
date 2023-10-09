@@ -316,7 +316,7 @@ def download_embalses():
     In order to download and to update pur 'Embalses' info file which will contain the basic data for hidro estimations.
     Download the zipfile in current directory, extracts the information and copies it into a variable, then deletes the zipfile.
     """
-    
+    embalses_data = None
 
     for retry in range(4):
 

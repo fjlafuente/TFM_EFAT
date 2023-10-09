@@ -57,7 +57,7 @@ The easiest and most simple way to start working with EFAT project is creating a
 
 3. Then it is easy to create a new environment by launching AnacondaPrompt (or other terminal):
 
-```conda env create --name EFAT_env python=3.8.11 ```
+```conda create --name EFAT_env python=3.8.11 ```
 
 4. Then, once the environment is created, it's time to install all the packages needed.
 Firstly, activate Conda environment:
