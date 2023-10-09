@@ -37,6 +37,11 @@ from matplotlib.colors import LinearSegmentedColormap, Normalize
 from joblib import load
 from sklearn.preprocessing import OneHotEncoder
 from PIL import Image
+from io import BytesIO
+from io import StringIO
+import io
+import subprocess
+import shlex
 
 
 
@@ -116,46 +121,55 @@ def data_REE_demand(year): # -> REE API Only allows to extract data in a yearly 
         data_consolidated = pd.concat([data_consolidated, data])
     return data_consolidated
 
-def data_REE_potencia_instalada(yearini, yearend): # -> REE API Only allows to extract data in a yearly range as much, in monthly basis
+def data_REE_potencia_instalada(yearini, yearend): 
 
-
-    #First we get the response from REE (It only allow us to see one year each time). We will create an empty list that will be appended
+    """ 
+    REE API Only allows to extract data in a yearly range as much, in monthly basis. We are downloading the info through a loop, selecting the desired fields in the json file
+    """
 
     years = range(yearini,yearend + 1)
     all_data = []
 
-    for year in years:
+    #First we get the response from REE (It only allow us to see one year each time). We will create an empty list that will be appended
 
-        #First we get the response from REE (It only allow us to see one year each time)
+    for retry in range(3):
+        try:
 
-        response = requests.get(f"https://apidatos.ree.es/es/datos/generacion/potencia-instalada?start_date={year}-01-01T00:00&end_date={year}-12-31T23:59&time_trunc=day&all_ccaa=allCcaa")
-        
-        #Data comes in a json with dictionaries inside. To access to the data we have to proccess it a little bit with json and dictionary methods.
+            for year in years:
 
-        pinstalled = response.json()['included']
+                #First we get the response from REE (It only allow us to see one year each time)
 
-        for ccaa in pinstalled:
+                response = requests.get(f"https://apidatos.ree.es/es/datos/generacion/potencia-instalada?start_date={year}-01-01T00:00&end_date={year}-12-31T23:59&time_trunc=day&all_ccaa=allCcaa")
+                
+                #Data comes in a json with dictionaries inside. To access to the data we have to proccess it a little bit with json and dictionary methods.
 
-            cc_aa = ccaa['community_name']
-            
-            #We create a for loop in order to access to all data in the dicionary and to get the complete list for all the energetic resources
-            
-            for item in ccaa['content']:
+                pinstalled = response.json()['included']
 
-                techonology = item['type']
-        
-                for element in item['attributes']['values']:
+                for ccaa in pinstalled:
+
+                    cc_aa = ccaa['community_name']
                     
-                    value = element['value']
-                    month = element['datetime']
-                    all_data.append({
-                        'comunidad_autonoma': cc_aa,
-                        'type': techonology,
-                        'month': month,
-                        'value': value
-                    })
-            time.sleep(3.0)
-    data_consolidated = pd.DataFrame(all_data)
+                    #We create a for loop in order to access to all data in the dicionary and to get the complete list for all the energetic resources
+                    
+                    for item in ccaa['content']:
+
+                        techonology = item['type']
+                
+                        for element in item['attributes']['values']:
+                            
+                            value = element['value']
+                            month = element['datetime']
+                            all_data.append({
+                                'comunidad_autonoma': cc_aa,
+                                'type': techonology,
+                                'month': month,
+                                'value': value
+                            })
+                    time.sleep(3.0)
+            data_consolidated = pd.DataFrame(all_data)
+        except Exception as e:
+            print(f"Error {e}. Trying again...")
+            time.sleep(5.0)  # Wait for another retry
     
     return data_consolidated
 
@@ -298,35 +312,59 @@ def aemet_data_api(year): # -> in order to get weather records from AEMET API
 
 def download_embalses():
 
-    #In order to download and to update pur 'Embalses' info file which will contain the basic data for hidro estimations
+    """
+    In order to download and to update pur 'Embalses' info file which will contain the basic data for hidro estimations.
+    Download the zipfile in current directory, extracts the information and copies it into a variable, then deletes the zipfile.
+    """
+    
 
-    #The file is stored in 'Ministerio para la Transición Ecológica y reto demográfico' webpage, and it is stored in zip format
+    for retry in range(3):
 
-    embalses = requests.get('https://www.miteco.gob.es/es/agua/temas/evaluacion-de-los-recursos-hidricos/bd-embalses_tcm30-538779.zip')
-    with zipfile.ZipFile(io.BytesIO(embalses.content), 'r') as zip_embalses:
-        zip_embalses.extractall('./Data/Hidro/')
+        try:
 
-    #When extracting it we get a mdb file. To transform it to a csv file:
+            #The file is stored in 'Ministerio para la Transición Ecológica y reto demográfico' webpage, and it is stored in zip format
 
-    # MDB file path
-    mdb_file = './Data/Hidro/BD-Embalses.mdb'
+            embalses = requests.get('https://www.miteco.gob.es/content/dam/miteco/es/agua/temas/evaluacion-de-los-recursos-hidricos/boletin-hidrologico/Historico-de-embalses/BD-Embalses.zip')
 
-    # table name. It has to be adjusted within the years
-    table_name = "T_Datos Embalses 1988-2023"
+            if embalses.status_code == 200:
+                with zipfile.ZipFile(io.BytesIO(embalses.content), 'r') as zip_embalses:
+                    zip_embalses.extractall()
 
-    # output CSV file path
-    output_csv_file = './Data/Hidro/Embalses.csv'
+                #When extracting it we get a mdb file. To transform it to a csv file:
 
-    command = f"mdb-export {mdb_file} \"{table_name}\""
-    output = subprocess.run(shlex.split(command), capture_output=True, text=True).stdout
+                # MDB file path
+                mdb_file =  'BD-Embalses.mdb'
 
-    # Write the output to the CSV file
-    with open(output_csv_file, 'w') as f:
-        f.write(output)
+                # table name. It has to be adjusted within the years
+                table_name = "T_Datos Embalses 1988-2023"
 
-    #Convert the csv file into a dataframe
+                # output CSV file path
+                output_csv_file = os.path.join('Embalses.csv')
 
-    embalses_data = pd.read_csv('./Data/Hidro/Embalses.csv')
+                command = f"mdb-export {mdb_file} \"{table_name}\""
+                output = subprocess.run(shlex.split(command), capture_output=True, text=True).stdout
+
+                # Write the output to the CSV file
+                with open(output_csv_file, 'w') as f:
+                    f.write(output)
+
+                #Convert the csv file into a dataframe
+
+                embalses_data = pd.read_csv('Embalses.csv')
+
+                #Remove file
+
+                os.remove(output_csv_file)
+                os.remove(mdb_file)
+
+                break
+
+            else:
+                time.sleep(5.0)
+
+        except Exception as e:
+            print(f"Error {e}. Trying again...")
+            time.sleep(5.0)  # Wait for another retry  
 
     return embalses_data
 
@@ -371,8 +409,6 @@ def aemet_municipios(): # -> in order to get masterdata from AEMET API
         except Exception as e:
             print(f"Error {e}. Trying again...")
             time.sleep(5.0)  # Wait for another retry
-            
-    print("Unable to download and read the file. Please try again later.")
     return None
 
 
@@ -382,173 +418,182 @@ def aemet_municipios_predictions(municipios): # -> in order to get predictions f
 
     municipios_id = list(municipios['id'])
 
-    #We create a dataframe that will be appended
-
-    df_prediction = pd.DataFrame(columns= ['id_municipio', 'nombre', 'provincia', 'fecha', 'tmax', 'tmin', 'estado_cielo', 'viento', 'racha'])
-
     #Now we create a loop in order to access to all the required information for each municipio:
 
-    for municipio in municipios_id:
-        
-        #In order to avoid blocking AEMET servers:
+    for retry in range(3):
 
-        time.sleep(0.5)
+        #We create a dataframe that will be appended based on the information provided by AEMET
 
-        #We only need municipio ID:
+        df_prediction = pd.DataFrame(columns= ['id_municipio', 'nombre', 'provincia', 'fecha', 'tmax', 'tmin', 'Icon_code', 'viento', 'racha'])
 
-        municipio = municipio[2:]
+        try:
 
-        url = f"https://opendata.aemet.es/opendata/api/prediccion/especifica/municipio/diaria/{municipio}"
-
-        #We need an API key that can be obtained from AEMET easily
-
-        query = {"api_key":"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJqYXZpZXIuZXNjYWxvbmlsbGFAaG90bWFpbC5jb20iLCJqdGkiOiJlNzgyMjg0Yy05YjI0LTQ5ZDktOWMwMS1kYjRlZjQwNjkxNDIiLCJpc3MiOiJBRU1FVCIsImlhdCI6MTY4MTE0MTIyNCwidXNlcklkIjoiZTc4MjI4NGMtOWIyNC00OWQ5LTljMDEtZGI0ZWY0MDY5MTQyIiwicm9sZSI6IiJ9.3flzKWh31FkeRBFex1xc4nIwEaQE1QPXoCpeicIluQU"}
-
-        response = requests.request("GET", url,  params = query, timeout = 500)
-
-        
-        if response.status_code != 200:
-
-            #We have another API key if the main one fails. We repeat the same procedure:
-
-            time.sleep(0.5)
-
-            query = {"api_key": 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJsYWZ1bGFmdWVudGVAZ21haWwuY29tIiwianRpIjoiNGZlY2Y3MzMtYTY3Yy00M2ZmLTgxODMtZTM1N2Q0ODc0YzM5IiwiaXNzIjoiQUVNRVQiLCJpYXQiOjE2ODg1MTM0MjksInVzZXJJZCI6IjRmZWNmNzMzLWE2N2MtNDNmZi04MTgzLWUzNTdkNDg3NGMzOSIsInJvbGUiOiIifQ.WCoq7p6RyV6thyXkkzUmgg27jt2AsJBK3uVTrv2uBcI'}
-
-            response = requests.request("GET", url,  params = query, timeout = 500)
-
-            if response.status_code != 200:
-                raise ValueError('API Request not succesfull')
-
-            predictions = response.json()['datos']
-
-            predictions = urllib.request.urlopen(predictions)
-            predictions = json.loads(predictions.read().decode('latin-1'))
-
-            #As usual, json file provides the information in many dictionaries, lists etc. and it is not easy to process it:
-        
-            for item in predictions:
-                item_id = item['id']
-                nombre = item['nombre']
-                provincia = item['provincia']
-                prediccion = item['prediccion']
-                prediccion = prediccion['dia']
-                for day in prediccion:
-                    fecha = day['fecha']
-
-                    #For get the temperature(max & min):
-
-                    temp = day['temperatura']
-                    tmax = temp['maxima']
-                    tmin = temp['minima']
-
-                    #In order to access to isolation information. We will map the information afterwards
-
-                    estado_del_cielo = []
-                    for data in day['estadoCielo']:
-
-                        if data['value'] == '':
-                            pass
-                        else:
-                            estado_id = data['value']
-                            estado_del_cielo.append(estado_id)
-
-                    #Wind information
-
-                    velocidad_viento = []
-                    for data in day['viento']:
-                        
-                        velocidad = float(data['velocidad'])
-                        velocidad_viento.append(velocidad)
-
-                    racha_viento = []
-                    for data in day['rachaMax']:
-
-                        if data['value'] == '':
-                            pass
-                        else:
-                            rachamax = float(data['value'])
-                            racha_viento.append(rachamax)
-                    
-                    #Now the dataframe is created:
-
-                    estado_cielo = statistics.mode(estado_del_cielo)
-                    viento = statistics.mean(velocidad_viento)
-                    if len(racha_viento) == 0: #In order to avoid making the mean with '0' values that are errors:
-                        racha = None
-                    else:
-                        racha = statistics.mean(racha_viento)
-                    datadict = {'id_municipio': item_id, 'nombre': nombre, 'provincia':provincia, 'fecha': fecha, 'tmax': tmax, 'tmin':tmin, 'Icon_code' : estado_cielo, 'viento': viento, 'racha' :racha}
-                    total_prediction = pd.DataFrame(datadict, index = [0])
-                    df_prediction = pd.concat([df_prediction, total_prediction])
-            
-            
+            for municipio in municipios_id:
                 
+                #In order to avoid blocking AEMET servers:
 
-        else:
-            predictions = response.json()['datos']
-            
-            predictions = urllib.request.urlopen(predictions)
-            predictions = json.loads(predictions.read().decode('latin-1'))
+                time.sleep(0.5)
 
-            #As usual, json file provides the information in many dictionaries, lists etc. and it is not easy to process it:
-        
-            for item in predictions:
-                item_id = item['id']
-                nombre = item['nombre']
-                provincia = item['provincia']
-                prediccion = item['prediccion']
-                prediccion = prediccion['dia']
-                for day in prediccion:
-                    fecha = day['fecha']
+                #We only need municipio ID:
 
-                    #For get the temperature(max & min):
+                municipio = municipio[2:]
 
-                    temp = day['temperatura']
-                    tmax = temp['maxima']
-                    tmin = temp['minima']
+                url = f"https://opendata.aemet.es/opendata/api/prediccion/especifica/municipio/diaria/{municipio}"
 
-                    #In order to access to isolation information. We will map the information afterwards
+                #We need an API key that can be obtained from AEMET easily
 
-                    estado_del_cielo = []
-                    for data in day['estadoCielo']:
+                query = {"api_key":"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJqYXZpZXIuZXNjYWxvbmlsbGFAaG90bWFpbC5jb20iLCJqdGkiOiJlNzgyMjg0Yy05YjI0LTQ5ZDktOWMwMS1kYjRlZjQwNjkxNDIiLCJpc3MiOiJBRU1FVCIsImlhdCI6MTY4MTE0MTIyNCwidXNlcklkIjoiZTc4MjI4NGMtOWIyNC00OWQ5LTljMDEtZGI0ZWY0MDY5MTQyIiwicm9sZSI6IiJ9.3flzKWh31FkeRBFex1xc4nIwEaQE1QPXoCpeicIluQU"}
 
-                        if data['value'] == '':
-                            pass
-                        else:
-                            estado_id = data['value']
-                            estado_del_cielo.append(estado_id)
+                response = requests.request("GET", url,  params = query, timeout = 500)
 
-                    #Wind information
+                
+                if response.status_code != 200:
 
-                    velocidad_viento = []
-                    for data in day['viento']:
-                        
-                        velocidad = float(data['velocidad'])
-                        velocidad_viento.append(velocidad)
+                    #We have another API key if the main one fails. We repeat the same procedure:
 
-                    racha_viento = []
-                    for data in day['rachaMax']:
+                    time.sleep(0.5)
 
-                        if data['value'] == '':
-                            pass
-                        else:
-                            rachamax = float(data['value'])
-                            racha_viento.append(rachamax)
-                    
-                    #Now the dataframe is created:
+                    query = {"api_key": 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJsYWZ1bGFmdWVudGVAZ21haWwuY29tIiwianRpIjoiNGZlY2Y3MzMtYTY3Yy00M2ZmLTgxODMtZTM1N2Q0ODc0YzM5IiwiaXNzIjoiQUVNRVQiLCJpYXQiOjE2ODg1MTM0MjksInVzZXJJZCI6IjRmZWNmNzMzLWE2N2MtNDNmZi04MTgzLWUzNTdkNDg3NGMzOSIsInJvbGUiOiIifQ.WCoq7p6RyV6thyXkkzUmgg27jt2AsJBK3uVTrv2uBcI'}
 
-                    estado_cielo = statistics.mode(estado_del_cielo)
-                    viento = statistics.mean(velocidad_viento)
-                    if len(racha_viento) == 0: #In order to avoid making the mean with '0' values
-                        racha = None
-                    else:
-                        racha = statistics.mean(racha_viento)
-                    datadict = {'id_municipio': item_id, 'nombre': nombre, 'provincia':provincia, 'fecha': fecha, 'tmax': tmax, 'tmin':tmin, 'Icon_code' : estado_cielo, 'viento': viento, 'racha' :racha}
-                    total_prediction = pd.DataFrame(datadict, index = [0])
-                    df_prediction = pd.concat([df_prediction, total_prediction])
-    
+                    response = requests.request("GET", url,  params = query, timeout = 500)
+
+                    if response.status_code != 200:
+                        raise ValueError('API Request not succesfull')
+
+                    predictions = response.json()['datos']
+
+                    predictions = urllib.request.urlopen(predictions)
+                    predictions = json.loads(predictions.read().decode('latin-1'))
+
+                    #As usual, json file provides the information in many dictionaries, lists etc. and it is not easy to process it:
+                
+                    for item in predictions:
+                        item_id = item['id']
+                        nombre = item['nombre']
+                        provincia = item['provincia']
+                        prediccion = item['prediccion']
+                        prediccion = prediccion['dia']
+                        for day in prediccion:
+                            fecha = day['fecha']
+
+                            #For get the temperature(max & min):
+
+                            temp = day['temperatura']
+                            tmax = temp['maxima']
+                            tmin = temp['minima']
+
+                            #In order to access to isolation information. We will map the information afterwards
+
+                            estado_del_cielo = []
+                            for data in day['estadoCielo']:
+
+                                if data['value'] == '':
+                                    pass
+                                else:
+                                    estado_id = data['value']
+                                    estado_del_cielo.append(estado_id)
+
+                            #Wind information
+
+                            velocidad_viento = []
+                            for data in day['viento']:
+                                
+                                velocidad = float(data['velocidad'])
+                                velocidad_viento.append(velocidad)
+
+                            racha_viento = []
+                            for data in day['rachaMax']:
+
+                                if data['value'] == '':
+                                    pass
+                                else:
+                                    rachamax = float(data['value'])
+                                    racha_viento.append(rachamax)
                             
+                            #Now the dataframe is created:
+
+                            estado_cielo = statistics.mode(estado_del_cielo)
+                            viento = statistics.mean(velocidad_viento)
+                            if len(racha_viento) == 0: #In order to avoid making the mean with '0' values that are errors:
+                                racha = None
+                            else:
+                                racha = statistics.mean(racha_viento)
+                                
+                            datadict = {'id_municipio': item_id, 'nombre': nombre, 'provincia':provincia, 'fecha': fecha, 'tmax': tmax, 'tmin':tmin, 'Icon_code' : estado_cielo, 'viento': viento, 'racha' :racha}
+                            total_prediction = pd.DataFrame(datadict, index = [0])
+                            df_prediction = pd.concat([df_prediction, total_prediction])
+                    
+                    
+                        
+
+                else:
+                    predictions = response.json()['datos']
+                    
+                    predictions = urllib.request.urlopen(predictions)
+                    predictions = json.loads(predictions.read().decode('latin-1'))
+
+                    #As usual, json file provides the information in many dictionaries, lists etc. and it is not easy to process it:
+                
+                    for item in predictions:
+                        item_id = item['id']
+                        nombre = item['nombre']
+                        provincia = item['provincia']
+                        prediccion = item['prediccion']
+                        prediccion = prediccion['dia']
+                        for day in prediccion:
+                            fecha = day['fecha']
+
+                            #For get the temperature(max & min):
+
+                            temp = day['temperatura']
+                            tmax = temp['maxima']
+                            tmin = temp['minima']
+
+                            #In order to access to isolation information. We will map the information afterwards
+
+                            estado_del_cielo = []
+                            for data in day['estadoCielo']:
+
+                                if data['value'] == '':
+                                    pass
+                                else:
+                                    estado_id = data['value']
+                                    estado_del_cielo.append(estado_id)
+
+                            #Wind information
+
+                            velocidad_viento = []
+                            for data in day['viento']:
+                                
+                                velocidad = float(data['velocidad'])
+                                velocidad_viento.append(velocidad)
+
+                            racha_viento = []
+                            for data in day['rachaMax']:
+
+                                if data['value'] == '':
+                                    pass
+                                else:
+                                    rachamax = float(data['value'])
+                                    racha_viento.append(rachamax)
+                            
+                            #Now the dataframe is created:
+
+                            estado_cielo = statistics.mode(estado_del_cielo)
+                            viento = statistics.mean(velocidad_viento)
+                            if len(racha_viento) == 0: #In order to avoid making the mean with '0' values
+                                racha = None
+                            else:
+                                racha = statistics.mean(racha_viento)
+                            datadict = {'id_municipio': item_id, 'nombre': nombre, 'provincia':provincia, 'fecha': fecha, 'tmax': tmax, 'tmin':tmin, 'Icon_code' : estado_cielo, 'viento': viento, 'racha' :racha}
+                            total_prediction = pd.DataFrame(datadict, index = [0])
+                            df_prediction = pd.concat([df_prediction, total_prediction])
+
+            return df_prediction
+                        
+        except Exception as e:
+            print(f"Error {e}. Trying again...")
+            time.sleep(5.0)  # Wait for another retry           
 
 
     return df_prediction
@@ -563,6 +608,13 @@ def weather_csv_file(year): # -> So we can save all years data in our project's 
 ## PROCESSING
 
 def weather_processing(weather_file):
+
+    """
+    Process weather_file:
+    - Correctes some values in 'prec' that contain text when 'prec' is so low.
+    - Converts into numeric the vairables that we are interested in.
+    - Selects and group those variables by 'fecha'  and 'provincia'.
+    """
 
     weather_file_processed = weather_file
 
@@ -580,7 +632,33 @@ def weather_processing(weather_file):
     
     for column in columns_to_transform:
         weather_file_processed[column] = weather_file_processed[column].str.replace(',', '.')
-        weather_file_processed[column] = weather_file_processed[column].apply(pd.to_numeric)
+        weather_file_processed[column] = weather_file_processed[column].apply(pd.to_numeric, errors = 'coerce')
+
+
+
+    #Our analysis will be based on 'Provincia' info, therefore we need to have the information grouped by that column. We can simplify tis way also the dataframe:
+
+    weather_file_processed = weather_file_processed.groupby(['fecha', 'provincia'], as_index=False).agg(
+        {'tmed': 'mean',
+         'prec': 'sum',
+         'tmin': 'mean',
+         'tmax': 'mean',
+         'dir': 'mean',
+         'velmedia': 'mean',
+         'racha': 'mean',
+         'sol': 'mean',}).round(3)
+
+    #It is necessary also to already adjust some 'Provincia' names in order to avoid errors when matching the files afteerwards:
+
+    weather_file_processed['provincia'] = weather_file_processed['provincia'].replace('VALENCIA','VALENCIA/VALENCIA')
+    weather_file_processed['provincia'] = weather_file_processed['provincia'].replace('A CORUÑA','A CORUNA')
+    weather_file_processed['provincia'] = weather_file_processed['provincia'].replace('ALICANTE','ALICANTE/ALACANT')
+    weather_file_processed['provincia'] = weather_file_processed['provincia'].replace('CASTELLON','CASTELLON/CASTELLO')
+    weather_file_processed['provincia'] = weather_file_processed['provincia'].replace('STA. CRUZ DE TENERIFE','SANTA CRUZ DE TENERIFE')
+
+    #We exlude 2014 from the study:
+
+    weather_file_processed = weather_file_processed[weather_file_processed['fecha'].dt.year != 2014]
 
     return weather_file_processed
 
@@ -596,6 +674,11 @@ def constrain_weather (weather_file):
 
 
 def embalses_select_year (df, presas_file, year):
+
+    """
+    Mix the 'embalses' file with masterdata to obtain the province.
+    Select only the year mentioned and the dams with hydroelectric generation.
+    """
 
     #Firstly, we read the 'embalses' data and select only the year we want and to process 'Embalse Nombre' in order to match it with 'presas' file.
     #We only want the dams with the electricty flag marked
@@ -697,6 +780,13 @@ def translate_canarias(spain_file):
     return spain_file
 
 def process_df_predictions(prediction_df, codprovincias_file):
+
+        """ 
+        Rename name of some provinces
+        Extract the tmed feature as a mean of tmax & tmin
+        Merging prediction dataframe & codprovincias file to obtain the CCAA
+        Groupping by the dataframe to obtain the mean by CCAA and date
+        """
         #We need some replacements in 'provincias' in order to match it with the other files:
 
         prediction_df['provincia'] = prediction_df['provincia'].replace('València/Valencia','Valencia/València')
@@ -717,9 +807,9 @@ def process_df_predictions(prediction_df, codprovincias_file):
         prediction_df = prediction_df.rename(columns= {'viento': 'velmedia',
                                                        'cod_sol': 'sol'})
         
-        #Icon_code can be droppe:
+        #Icon_code can be dropped:
 
-        prediction_df = prediction_df.drop(columns = 'estado_cielo_x')
+        prediction_df = prediction_df.drop(columns = 'Icon_code')
 
         #We cross it with provincias file:
 
@@ -739,7 +829,12 @@ def process_df_predictions(prediction_df, codprovincias_file):
         return prediction_df
 
 
-def embalses_latest_data(embalses_file, codprovincias_file): #In order to prepare the information to insert it into the trained model.
+def embalses_latest_data(embalses_file, cod_provincias_file):
+
+    """ 
+    In order to prepare the information to insert it into the trained model.
+    Selects latest information available and cross it with provinces file to obtain the CCAA.
+    """
 
     #We only need information accumulated by 'Provincia' and 'FECHA':
 
@@ -764,7 +859,7 @@ def embalses_latest_data(embalses_file, codprovincias_file): #In order to prepar
     embalses_file['provincia'] = embalses_file['provincia'].apply(unidecode).str.upper()
 
     #We have to merge it with codprovincias to get the 'comunidad_autonom' columns
-    embalses_file = pd.merge(embalses_file, codprovincias_file, on = 'provincia', how = 'left')
+    embalses_file = pd.merge(embalses_file, cod_provincias_file, on = 'provincia', how = 'left')
 
     #Groupping by CCAA so we have the info the same way as the other files:
     embalses_file = embalses_file.groupby('comunidad_autonoma', as_index = False)[['AGUA_TOTAL','AGUA_ACTUAL']].sum().round(3)
@@ -773,6 +868,13 @@ def embalses_latest_data(embalses_file, codprovincias_file): #In order to prepar
 
 
 def filter_predictions_df(predictions_dataframe):
+
+    """ 
+    Creates from a single consolidated dataframe 5 dataframes, one for each target.
+    Filter the 'comunidades autonomas' relevant for each category.
+    Selects for each dataframe the relevant variables to consider
+    Makes the OneHotEncoder for each dataframe
+    """
 
     ccaa_solartermica = ['ANDALUCIA', 'CASTILLA-LA MANCHA', 'CATALUNA', 'COMUNITAT VALENCIANA','EXTREMADURA','REGION DE MURCIA']
     ccaa_solarfotovoltaica = ['ANDALUCIA', 'ARAGON', 'CANARIAS' ,'CASTILLA Y LEON', 'CASTILLA-LA MANCHA',
@@ -817,7 +919,9 @@ def filter_predictions_df(predictions_dataframe):
 
 def cod_provincias(cod_provincias_df):
 
-    #In order to transform codprovincias dataframe so it can be crossmatched with other files, we haver several things to adapt in columns format:
+    """
+    In order to transform codprovincias dataframe so it can be crossmatched with other files, we haver several things to adapt in columns format:
+    """
 
     cod_provincias_df.rename(columns = {'Provincia': 'provincia'},inplace= True)
     cod_provincias_df['provincia'] = cod_provincias_df['provincia'].apply(unidecode).str.upper()
@@ -838,6 +942,9 @@ def power_installed_last_month(powerinstalled_file):
     return power_file
 
 def pivot_table_generation_by_ccaa(generation_total_by_ccaa_file):
+    """
+    Transposing the category column 'type' into several columns with 'value_ccaa' as values.
+    """
 
     #We create the pivot table: only with the columnd we are interested in:
     generation_total_by_ccaa_file =  generation_total_by_ccaa_file.pivot_table(index = ['fecha', 'comunidad_autonoma'],
@@ -864,6 +971,11 @@ def REE_ccaa_rename(dataframe):
     return dataframe
 
 def powerinstalled_CCAA_process(powerfile):
+
+        """
+        Dropping columns not needed, decoding text and transforming dates into a friendly format.
+        Selecting the technologies we are using.
+        """
         
         powerfile = powerfile.drop(columns = [col for col in powerfile.columns if col =='Unnamed: 0'])
 
@@ -891,6 +1003,11 @@ def powerinstalled_CCAA_process(powerfile):
         return powerfile
 
 def all_predictions (predictions_file, embalses_file, power_installed_file): #To finally have the file ready to work with it:
+
+    """ 
+    Function to cross all dataframes AEMET, MITECO & REE regarding predictions and create the final dataframe
+    Creating the column 'Weekday' to incorporate it into 'demand' file.
+    """
     
     predictions_total = pd.merge(predictions_file, embalses_file, how = 'left', on = 'comunidad_autonoma')
 
@@ -942,22 +1059,105 @@ def onehotencoder_ccaa (dataframe):
 
 def sort_municipios(municipios_df):
     
-    #Select some samples (4) for every province based on nº inhabitants:
-    #Firstly, we want to extract 'province id' from the id for each municipio:
+    """Select some samples (3) for every province based on nº inhabitants"""
+
+    #Firstly, we want to extract 'province id' from the id for each 'municipio':
     
     municipios_df['prov_id'] = municipios_df['id'].str[2:4]
+
+    #Transform nª inhabitants for sorting
+    municipios_df['num_hab'] = pd.to_numeric(municipios_df['num_hab'])
 
     # Sort the entire dataframe by 'prov_id' and 'num_hab'
     municipios_ranked = municipios_df.sort_values(by=['prov_id', 'num_hab'], ascending=[True, False])
 
     # Group by 'prov_id' and pick top 5 for each group
-    top_municipios = municipios_ranked.groupby('prov_id').head(5)
+    top_municipios = municipios_ranked.groupby('prov_id').head(3)
+
+    top_municipios = top_municipios.sort_values(by='num_hab', ascending=False)
 
     # Reset index for the final dataframe
     top_municipios = top_municipios.reset_index(drop=True)
 
-    return top_municipios
+    top1 = pd.DataFrame(columns=top_municipios.columns)
+    top2 = pd.DataFrame(columns=top_municipios.columns)
+    top3 = pd.DataFrame(columns=top_municipios.columns)
 
+    for index, row in top_municipios.iterrows():
+        if row['prov_id'] not in top1['prov_id'].unique():
+            top1 = pd.concat([top1, row.to_frame().T])
+        else:
+            if row['prov_id'] not in top2['prov_id'].unique():
+                top2 = pd.concat([top2, row.to_frame().T])
+            else:
+                top3 = pd.concat([top3, row.to_frame().T])
+    
+    top1 = pd.DataFrame(top1)
+    top2 = pd.DataFrame(top2)
+    top3 = pd.DataFrame(top3)
+    
+    top_municipios_df = pd.concat([top1, top2, top3])
+
+    # Reset index for the final dataframe
+    top_municipios_df = top_municipios_df.reset_index(drop=True)
+
+    return top_municipios_df
+
+def embalses_elect (embalses_file, presas_file):
+
+    """
+    It processes two dataframes, one with the historical data of the water reservoirs in Spain and a second one with the masterdata of those dams. The result is a cleaner dataframe with the columns we need:
+    - Select only the information of the dams that produce hidroelectric.
+    - Modify variables into numeric format.
+    - Decode text to have it the same way as other files in order to cross it.
+    -Cross both files to have the information of each embalse and its status.
+    - Group the dataframe by fecha and provinca to sum up the values so it can be crossed afterwards.
+    - Adjust 'provincia' & 'fecha' fields.
+
+    """
+
+    #Firstly, we read the 'embalses' data and select only the year we want and to process 'Embalse Nombre' in order to match it with 'presas' file.
+    #We only want the dams with the electricty flag marked
+    
+    embalses_elect = embalses_file.loc[embalses_file['ELECTRICO_FLAG'] == 1]
+    embalses_elect['year'] = pd.DatetimeIndex(embalses_elect['FECHA']).year
+
+    #In order to transform water KPIs into numeric
+    str(embalses_elect['AGUA_TOTAL'])
+    embalses_elect['AGUA_TOTAL'] = embalses_elect['AGUA_TOTAL'].str.replace(',' , '.')
+    embalses_elect['AGUA_TOTAL'] = embalses_elect['AGUA_TOTAL'].apply(pd.to_numeric)
+    str(embalses_elect['AGUA_ACTUAL'])
+    embalses_elect['AGUA_ACTUAL'] = embalses_elect['AGUA_ACTUAL'].str.replace(',' , '.')
+    embalses_elect['AGUA_ACTUAL'] = embalses_elect['AGUA_ACTUAL'].apply(pd.to_numeric)
+
+    #In order to have the information of the year that we want and to get the name of the dam in the way to match it with 'presas' file
+
+    embalses_elect = embalses_elect[embalses_elect['year'] != 2014]
+    embalses_elect['EMBALSE_NOMBRE'] = embalses_elect['EMBALSE_NOMBRE'].apply(str.upper).apply(unidecode)
+
+    #Now, we have to preprocess 'presas' data
+
+    presas_file.rename({'Presa':'EMBALSE_NOMBRE'}, axis = 1, inplace = True)
+    presas_file['EMBALSE_NOMBRE'] = presas_file['EMBALSE_NOMBRE'].apply(unidecode)
+
+    #At last, the joint. It will be some dams not matched but are not relevant for our study:
+
+    embalses_capacity = embalses_elect.merge(presas_file, on = 'EMBALSE_NOMBRE', how= 'inner')
+
+    #In the end, we want the information aggregated by 'Provincia'. Therefore:
+
+    embalses_capacity = embalses_capacity.groupby(by =['FECHA','Provincia'], as_index =False)[['AGUA_TOTAL', 'AGUA_ACTUAL']].sum().sort_values(by = 'FECHA', ignore_index = True)
+
+    #We are also changing here the name 'Coruña, A' in this function as it is necessary to cross it with other files:
+
+    embalses_capacity['Provincia'] = embalses_capacity['Provincia'].replace('Coruña, A' ,'A Coruña')
+
+    #In order to have'Provincias' and 'FECHA' in the same form as the other files:
+
+    embalses_capacity = embalses_capacity.rename(columns = {'Provincia': 'provincia', 'FECHA': 'fecha'})
+    embalses_capacity['provincia'] = embalses_capacity['provincia'].apply(unidecode).str.upper()
+    
+    return embalses_capacity
 
 
 

@@ -6,7 +6,7 @@ import tempfile
 import datetime
 from sklearn.preprocessing import OneHotEncoder
 from st_circular_progress import CircularProgress
-from EFAT_Functions import aemet_municipios, aemet_municipios_predictions, drive_read_file_othersep, drive_read_latin_encoding_file, drive_read_xlsx_file, drive_read_joblibmodel
+from EFAT_Functions import aemet_municipios, aemet_municipios_predictions, drive_read_file_othersep, drive_read_latin_encoding_file, drive_read_xlsx_file, drive_read_joblibmodel, download_embalses, sort_municipios
 from EFAT_Functions import embalses_select_year, embalses_latest_data, process_df_predictions, cod_provincias, data_REE_potencia_instalada, plot_bars_predictions, plot_completion
 from EFAT_Functions import power_installed_last_month, powerinstalled_CCAA_process, pivot_table_generation_by_ccaa, REE_ccaa_rename, all_predictions, fill_na_predictions, standarization_minmax_scaler, filter_predictions_df, onehotencoder_ccaa, apply_model, sort_municipios
 
@@ -43,7 +43,7 @@ current_year = datetime.datetime.now().year
 @st.cache_data
 def download_municipios ():
     municipios = aemet_municipios()
-    
+    municipios = sort_municipios(municipios)
     return municipios
 
 @st.cache_data
@@ -57,8 +57,8 @@ def download_drive_others(url):
     return df
 
 @st.cache_data
-def download_embalses(url, presas_file, year):
-    df = drive_read_xlsx_file(url)
+def download_df_embalses(presas_file, year):
+    df = download_embalses()
     #We can assume for now it's always going to be 2023
     df = embalses_select_year(df, presas_file, year)
     return df
@@ -117,7 +117,7 @@ df_sun = download_drive_others(url_sun)
 percent_complete += 10
 progress.progress(percent_complete/100, text = progress_text)
 
-df_embalses = download_embalses(url_embalses, df_presas, current_year)
+df_embalses = download_df_embalses(df_presas, current_year)
 percent_complete += 15
 progress.progress(percent_complete/100, text = progress_text)
 
