@@ -46,7 +46,7 @@ def download_municipios ():
     municipios = sort_municipios(municipios)
     return municipios
 
-@st.cache_data(show_spinner= "Downloading weather forecast data...")
+@st.cache_data(show_spinner= "Downloading weather forecast data...", ttl = 86400) #Only want to store daily as it changes
 def download_weather_predictions(municipios):
     df_predictions = aemet_municipios_predictions(municipios)
     return df_predictions
@@ -56,7 +56,7 @@ def download_drive_others(url):
     df = drive_read_file_othersep(url)
     return df
 
-@st.cache_data(show_spinner= "Downloading dams data...")
+@st.cache_data(show_spinner= "Downloading dams data...", ttl = 604800) #Only want to store weekly as it changes
 def download_df_embalses(presas_file, year):
     df = download_embalses()
     #We can assume for now it's always going to be 2023
@@ -68,7 +68,7 @@ def download_df_provincias(url):
     df = drive_read_file_othersep(url)
     return df
 
-@st.cache_data(show_spinner= "Downloading power installed data...")
+@st.cache_data(show_spinner= "Downloading power installed data...", ttl = 2592000) #Only want to store monthly as it changes
 def download_power_installed(yearini,yearend):
     df = data_REE_potencia_instalada(yearini, yearend)
     return df
