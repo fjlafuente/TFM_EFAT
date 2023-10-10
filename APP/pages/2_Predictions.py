@@ -20,9 +20,9 @@ st.write('# EFAT Prediction model')
 
 st.markdown(
     """
-    Through this page it will be possible to have an estiamtion of the renewable energetic generation - and energetic demand-
+    Through this page it will be possible to have an estimation of the renewable energetic generation - and energetic demand-
     for the next seven days, based on weather forecast provided by AEMET.
-    The ML learning models have been training with the historical data from 2015 to 2022. During the preprocess and study phase, 'KNN' & 'RandomForest' were the models with the best performance accross the different technologies. Due t time consumption and resources efficiency, KNN model is the one used in this sheet for predictions.
+    The ML learning models have been training with the historical data from 2015 to 2022. During the preprocess and study phase, 'KNN' & 'RandomForest' were the models with the best performance accross the different technologies. Due to accuracy, time consumption and resources efficiency, KNN model is the one used in this sheet for predictions.
     """
 )
 
@@ -56,7 +56,7 @@ def download_drive_others(url):
     df = drive_read_file_othersep(url)
     return df
 
-
+@st.cache_data(show_spinner= "Downloading dams data...")
 def download_df_embalses(presas_file, year):
     df = download_embalses()
     #We can assume for now it's always going to be 2023
@@ -87,7 +87,7 @@ def download_model(url):
 
 #Download the dataframes related to prediction:
 
-progress_text = 'Downloading real-time data, please wait.'
+progress_text = 'Downloading real-time data, please grab a coffee and wait.'
 progress = st.progress(0)
 percent_complete = 0
 
