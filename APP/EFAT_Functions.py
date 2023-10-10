@@ -311,54 +311,37 @@ def aemet_data_api(year): # -> in order to get weather records from AEMET API
 
 
 def download_embalses():
-
     """
-    In order to download and to update pur 'Embalses' info file which will contain the basic data for hidro estimations.
-    Download the zipfile in current directory, extracts the information and copies it into a variable, then deletes the zipfile.
+    In order to download and update our 'Embalses' info file which will contain the basic data for hydro estimations.
+    Download the zipfile in the current directory, extract the information, and copy it into a variable, then delete the zipfile.
     """
-    embalses_data = None
 
-    for retry in range(4):
-
+    for retry in range(3):
         try:
-
-            #The file is stored in 'Ministerio para la Transición Ecológica y reto demográfico' webpage, and it is stored in zip format
-
+            # The file is stored on the 'Ministerio para la Transición Ecológica y reto demográfico' webpage, and it is stored in zip format
             embalses = requests.get('https://www.miteco.gob.es/content/dam/miteco/es/agua/temas/evaluacion-de-los-recursos-hidricos/boletin-hidrologico/Historico-de-embalses/BD-Embalses.zip')
 
             if embalses.status_code == 200:
                 with zipfile.ZipFile(io.BytesIO(embalses.content), 'r') as zip_embalses:
                     zip_embalses.extractall()
 
-                #When extracting it we get a mdb file. To transform it to a csv file:
-
                 # MDB file path
-                mdb_file =  'BD-Embalses.mdb'
+                mdb_file = 'BD-Embalses.mdb'
 
-                # table name. It has to be adjusted within the years
+                # Table name. It has to be adjusted within the years
                 table_name = "T_Datos Embalses 1988-2023"
 
-                # output CSV file path
-                output_csv_file = os.path.join('Embalses.csv')
-
+                # Execute the mdb-export command and get the output as a variable
                 command = f"mdb-export {mdb_file} \"{table_name}\""
-                output = subprocess.run(shlex.split(command), capture_output=True, text=True).stdout
+                output = subprocess.run(shlex.split(command), capture_output=True, text=True, encoding='latin-1').stdout
 
-                # Write the output to the CSV file
-                with open(output_csv_file, 'w') as f:
-                    f.write(output)
+                # Convert the output into a Pandas DataFrame using the correct encoding
+                embalses_data = pd.read_csv(io.StringIO(output), encoding='latin-1')
 
-                #Convert the csv file into a dataframe
-
-                embalses_data = pd.read_csv('Embalses.csv')
-
-                #Remove file
-
-                os.remove(output_csv_file)
+                # Remove files
                 os.remove(mdb_file)
 
                 break
-
             else:
                 time.sleep(5.0)
 
