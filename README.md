@@ -68,6 +68,29 @@ Firstly, activate Conda environment:
 
 `pip install -r requirements.txt`
 
+6. MDB-Tools: In order to be able to download the dams status file from MiTeCo (a mdb file from microsoft access) and process it to a dataframe, a special librery called mdb-tools is required. It is not included in the requirements file so it will be necessary to install it manually in your new EFAT_env (Please remember to have always activated the environment!).
+
+To install MDB-Tools on Linux terminal, it is enough to use sudo apt:
+
+`sudo apt install mdb-tools`
+
+To install it on macOS(previously downloaded Homebrew):
+
+`brew install mdbtools`
+
+To install MDB-Tools on Windows, the process is a little bit more complex as it is not native of windows environment.
+We are using library mdb-tools-win to make it work. Therefore, the first step would be to clone the repository:
+
+`git clone https://github.com/lsgunth/mdbtools-win.git`
+
+Now, we have to add it to our PATH dir to make it work (change the name of the route from your directory in which the mdbtools-win has been cloned):
+
+`setx PATH "%PATH%;C:\Users\...\mdbtools-win`
+
+Restart the terminal, the IDE -if opened-, activate again the environment and start working!
+
+
+
 Now you have everything you need to start learning with EFAT project!
 A good idea could be to start taking a look at the Exploration notebooks or directly start with 'EFAT_Model_Conclusions' notebook. After that, you could find how the model is implemented with 'EFAT_Predictions'.
 In case you are just curious about the final ouput of the project you can go directly to the online frontend built on streamlit:

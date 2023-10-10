@@ -27,18 +27,18 @@ url_map = 'https://drive.google.com/file/d/1G0YE63B11fjXXNvByeNDO99o0yvdY1uw/vie
 
 
 #In order to have spain map defined
-@st.cache_data
+@st.cache_data(show_spinner= "Downloading data...")
 def load_spain_map(url):
     spain_map = read_gpd_file(url)
     return spain_map
 
-@st.cache_data
+@st.cache_data(show_spinner= "Downloading data...")
 def process_spain_map(_spain_map):
     spain_map = create_spain_map(_spain_map)
     spain_map = translate_canarias(spain_map)
     return spain_map
 
-@st.cache_data
+@st.cache_data(show_spinner= "Downloading data...")
 def load_processed_data(url):
     df = drive_read_file(url)
     df['fecha'] = pd.to_datetime(df['fecha'])

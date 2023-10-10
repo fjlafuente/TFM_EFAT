@@ -56,7 +56,7 @@ def download_drive_others(url):
     df = drive_read_file_othersep(url)
     return df
 
-@st.cache_data(show_spinner= "Downloading dams data...")
+
 def download_df_embalses(presas_file, year):
     df = download_embalses()
     #We can assume for now it's always going to be 2023
